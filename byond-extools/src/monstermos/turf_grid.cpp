@@ -296,6 +296,7 @@ void Tile::equalize_pressure_in_zone(int cyclenum) {
 		monstermos_info = std::make_unique<MonstermosInfo>();
 
 	float starting_moles = air->total_moles();
+	float starting_temperature = air->get_temperature();
 	bool run_monstermos = false;
 	// first gotta figure out if it's even necessary
 	for (int i = 0; i < 6; i++) {
@@ -304,6 +305,11 @@ void Tile::equalize_pressure_in_zone(int cyclenum) {
 		if (!other->air) continue;
 		float comparison_moles = other->air->total_moles();
 		if (std::abs(comparison_moles - starting_moles) > MINIMUM_MOLES_DELTA_TO_MOVE) {
+			run_monstermos = true;
+			break;
+		}
+		float comparison_temperature = other->air->get_temperature();
+		if (std::abs(comparison_temperature - starting_temperature) > MINIMUM_TEMPERATURE_DELTA_TO_SUSPEND) {
 			run_monstermos = true;
 			break;
 		}
@@ -320,8 +326,12 @@ void Tile::equalize_pressure_in_zone(int cyclenum) {
 
 	// it has been deemed necessary. Now to figure out which turfs are involved.
 
+	// Assume no work is put into the system and the heat capacity isn't important
+	//T = (n1t1+n2t2)/(n1+n2)
+	//P = TR(n1+n2)/(v1+v2)
 	uint64_t queue_cycle = ++eq_queue_cycle_ctr;
 	float total_moles = 0;
+	float moles_times_temperatures = 0; //n1T1 + n2T2...
 	std::vector<Tile*> turfs;
 	turfs.push_back(this);
 	monstermos_info->last_queue_cycle = queue_cycle;
@@ -332,6 +342,7 @@ void Tile::equalize_pressure_in_zone(int cyclenum) {
 		exploring->monstermos_info->distance_score = 0;
 		if (i < MONSTERMOS_TURF_LIMIT) {
 			float turf_moles = exploring->air->total_moles();
+			float turf_temperature = exploring->air->get_temperature();
 			exploring->monstermos_info->mole_delta = turf_moles;
 			if (exploring->turf_ref.get_by_id(str_id_planetary_atmos).valuef) {
 				planet_turfs.push_back(exploring);
@@ -339,6 +350,7 @@ void Tile::equalize_pressure_in_zone(int cyclenum) {
 				continue;
 			}
 			total_moles += turf_moles;
+			moles_times_temperatures += turf_moles * turf_temperature;
 		}
 		for (int j = 0; j < 6; j++) {
 			if (!(exploring->adjacent_bits & (1 << j))) continue;
@@ -368,6 +380,7 @@ void Tile::equalize_pressure_in_zone(int cyclenum) {
 		turfs.resize(MONSTERMOS_TURF_LIMIT);
 	}
 	float average_moles = total_moles / (turfs.size() - planet_turfs.size());
+	float final_temperature = moles_times_temperatures / total_moles; //U_f = U_1 + U_2; U = n C_v T; Assume same C_v for convenience.
 	std::vector<Tile*> giver_turfs;
 	std::vector<Tile*> taker_turfs;
 	for (int i = 0; i < turfs.size(); i++) {
@@ -582,6 +595,7 @@ void Tile::equalize_pressure_in_zone(int cyclenum) {
 		}
 	}
 	for (int i = 0; i < turfs.size(); i++) {
+		turfs[i]->air->set_temperature(final_temperature);
 		turfs[i]->finalize_eq();
 	}
 	for (int i = 0; i < turfs.size(); i++) {
