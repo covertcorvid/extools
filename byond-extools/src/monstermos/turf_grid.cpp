@@ -308,7 +308,6 @@ void Tile::equalize_pressure_in_zone(int cyclenum) {
 			run_monstermos = true;
 			break;
 		}
-		}
 		float comparison_temperature = other->air->get_temperature();
 		if (std::abs(comparison_temperature - starting_temperature) > MINIMUM_TEMPERATURE_DELTA_TO_SUSPEND) {
 			run_monstermos = true;
